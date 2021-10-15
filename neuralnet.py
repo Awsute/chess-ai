@@ -62,9 +62,9 @@ class Network:
     def random_net(self, out_size):
         t = []
         prev_len = len(self.inputs)
-        for i in range(3):
+        for i in range(4):
             l = []
-            ln = 32
+            ln = 64
             for o in range(ln):
                 w = []
                 for j in range(prev_len):
@@ -114,9 +114,9 @@ class Network:
             self.outputs[len(self.outputs)-1][i] = self.activator(self.outputs[len(self.outputs)-1][i])
         return self.outputs
     
-    def backprop(self, g, y_c):
+    def backprop(self, y, y_c):
         
-        y = g[len(g)-1]
+        g = self.outputs
         
         #print("cost = " + str(cost))
         cost = 0
@@ -142,7 +142,7 @@ class Network:
                         self.hidden[l-1][n][1] -= lrn_rt*dCdb  
                         #print("dCdb" +  str(l) + ",  " + str(n) + " = " + str(dCdb))
                         #self.hidden[l-1][n][1] = safe_sigmoid(self.hidden[l-1][n][1])
-        return
+        return self.hidden
     
     def import_from_file(self, path):
         

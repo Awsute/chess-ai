@@ -234,10 +234,58 @@ win.setBackground(color_rgb(50, 15, 50))
 
 
 net1 = Network(69, [])
-#inpute is fen separated into 69 parts
+#input is fen separated into 69 parts
 net1.hidden = net1.random_net(1)
 #net1 = net1.import_from_file("current_ai.json")
 #out1 is index of possible move
+
+
+#tournament bracket for gecnetic algorithm type thing
+def setup_bracket(base_net, size):
+    b = []
+    r = []
+    for i in range(2**size):
+        b1 = Network(len(base_net.inputs), base_net.hidden.copy())
+        b1.backprop([0], [[random()]])
+
+        b2 = Network(len(base_net.inputs), base_net.hidden.copy())
+        b2.backprop([0], [[random()]])
+
+        b.append([b1, b2])
+        r.append([0, 0])
+    return b, r
+
+def setup_bracket_rand(base_net, size):
+    b = []
+    r = []
+    for i in range(2**size):
+        b1 = Network(len(base_net.inputs), base_net.hidden.copy())
+        b1.backprop([0], [[random()]])
+
+        b2 = Network(69, [])
+        b2.hidden = b2.random_net(1)
+
+        b.append([b1, b2])
+        r.append([0, 0])
+    return b, r
+
+def bracket_next_layer(bracket, records):
+    b = []
+    r = []
+    for i in range(int(len(bracket)/2)):
+        winner1 = bracket[i][0]
+        if records[i][1] > records[i][0]:
+            winner1 = bracket[i][1]
+        
+        winner2 = bracket[i+1][0]
+        if records[i+1][1] > records[i+1][0]:
+            winner2 = bracket[i+1][1]
+        b.append([winner1, winner2])
+        r.append([0, 0])
+    return b, r
+        
+        
+
 
 board_col = [color_rgb(25, 75, 25), color_rgb(200, 200, 200)] #[dark, light]
 w_piece_col = [color_rgb(255, 255, 255), color_rgb(0, 0, 0)]
@@ -251,39 +299,84 @@ in_square = lambda point : [int((point.getX()-board_offest[0])/square_size[0]), 
 turn = 0
 #light is turn 0
 #dark is turn 1
+bracket_layers = 3
 selected = []
 board = new_board()
+bracket, records = setup_bracket_rand(net1, bracket_layers)
+
 players = [net1, net1]
-max_games = 1000
-game_counter = 0
+
+
+training = True
+
+
+
+bracket_num = 0
+game_counter = 0.0
+bracket_layer_count = 0
 while win.checkKey() != "Escape":
+
     fen = brd.fen()
     board, info = fen_to_brd(fen, board)
-    board_dim = draw_board(win, square_size, board, board_col, board_offest, white, black, w_piece_col, b_piece_col)
-    win.flush()
+    #board_dim = draw_board(win, square_size, board, board_col, board_offest, white, black, w_piece_col, b_piece_col)
+    #win.flush()
     
     if brd.is_game_over():
-        print(brd.outcome().result())
-        game_counter += 1
-        game = chess.pgn.Game.from_board(brd)
-        # Undo all moves.
-        switchyard = []
-        while brd.move_stack:
-            switchyard.append(brd.pop())
+        if int(game_counter+0.5) == len(bracket):
+            print(game_counter)
+            game_counter = 0
+            
+            if bracket_layer_count == bracket_layers:
+                winner = bracket[int(game_counter)-1][0]
+                if records[int(game_counter)-1][1] > records[int(game_counter)-1][0]:
+                    winner = bracket[int(game_counter)-1][1]
+                bracket, records = setup_bracket_rand(winner, bracket_layers)
+                winner.output_to_file("current_ai.json")
+                
+                if bracket_num%100 == 0:
+                    game = chess.pgn.Game.from_board(brd)
+                    # Undo all moves.
+                    switchyard = []
+                    while brd.move_stack:
+                        switchyard.append(brd.pop())
 
-        game.setup(brd)
-        node = game
+                    game.setup(brd)
+                    node = game
 
-        # Replay all moves.
-        while switchyard:
-            move = switchyard.pop()
-            node = node.add_variation(move)
-            brd.push(move)
-        game.headers["Result"] = brd.result()
-        with open("games/game" + str(game_counter) + ".pgn", "x") as f:
-            f.write(game.__str__())
+                    # Replay all moves.
+                    while switchyard:
+                        move = switchyard.pop()
+                        node = node.add_variation(move)
+                        brd.push(move)
+                    game.headers["Result"] = brd.result()
+                    with open("games/game" + str(bracket_num) + "-" + str(bracket_layer_count) + "-" + str(game_counter) + ".pgn", "x") as f:
+                        f.write(game.__str__())
+                
+                bracket_layer_count = 0
+                bracket_num += 1
+                print(bracket_num)
+            else:
+                bracket_layer_count += 1
+                bracket, records = bracket_next_layer(bracket, records)
+        else:
+            result = brd.result()
+            if brd.is_checkmate():
+                records[int(game_counter)][0] += int(result[0])
+                records[int(game_counter)][1] += int(result[len(result)-1])
+            game_counter += 0.5
+            print(records)
+            if game_counter.is_integer():
+                players[0] = bracket[int(game_counter)][0]
+                players[1] = bracket[int(game_counter)][1]
+            else:
+                players[0] = bracket[int(game_counter)][1]
+                players[1] = bracket[int(game_counter)][0]
+        
+
         brd.reset()
+        turn  = 0
     else:
+        
         if players[turn] == True:
             m_pos = win.checkMouse()
             if m_pos:
@@ -332,4 +425,4 @@ while win.checkKey() != "Escape":
 
                         
                 
-    time.sleep(1/30)
+    time.sleep(0)
