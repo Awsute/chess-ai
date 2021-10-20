@@ -3,7 +3,7 @@ import re
 
 
 from graphics import *
-from os import system
+from os import system, terminal_size
 import time
 import chess
 import chess.pgn
@@ -229,74 +229,39 @@ def pos_to_num(pos_x, pos_y):
 
 
 brd = chess.Board()
-win = GraphWin("test", 1600, 800, False)
+win = GraphWin("test", 1200, 600, False)
 win.setCoords(0, 0, win.width, win.height)
 win.plot(20, 20)
 win.setBackground(color_rgb(50, 15, 50))
 
+square_ratio_x = 75/1600
+square_ratio_y = 75/800
+off_ratio_x = 100/1600
+off_ratio_y = 100/800
 
-net1 = Network(69, [], Activator(lambda x: safe_sigmoid(x), lambda x: (1-safe_sigmoid(x))*safe_sigmoid(x)))
+epsilon = 1.0
+max_epsilon = 1.0 #max probability of experimentation
+min_epsilon = 0.01 #min probability of experimentation
+net1 = Network(69, [], Activator(lambda x: safe_sigmoid(x), lambda x: (1-safe_sigmoid(x))*safe_sigmoid(x)), epsilon, max_epsilon, min_epsilon)
 #input is fen separated into 69 parts
 net1.hidden = net1.random_net(1)
 #net1 = net1.import_from_file("current_ai.json")
 #out1 is index of possible move
 
 
-#tournament bracket for gecnetic algorithm type thing
-def setup_bracket(base_net, size):
-    b = []
-    r = []
-    for i in range(2**size):
-        b1 = Network(len(base_net.inputs), base_net.hidden.copy(), base_net.activator)
-        b1.backprop([0], [[random()]])
-
-        b2 = Network(len(base_net.inputs), base_net.hidden.copy(), base_net.activator)
-        b2.backprop([0], [[random()]])
-
-        b.append([b1, b2])
-        r.append([0, 0])
-    return b, r
-
-def setup_bracket_rand(base_net, size):
-    b = []
-    r = []
-    for i in range(2**size):
-        b1 = Network(len(base_net.inputs), base_net.hidden.copy(), base_net.activator)
-        b1.backprop([0], [[random()]])
-
-        b2 = Network(69, [], base_net.activator)
-        b2.hidden = b2.random_net(1)
-        #if randint(0, 1) == 0:
-        b.append([b1, b2])
-        #else:
-        #    b.append([b2, b1])
-        r.append([0, 0])
-    return b, r
-
-def bracket_next_layer(bracket, records):
-    b = []
-    r = []
-    for i in range(int(len(bracket)/2)):
-        winner1 = bracket[i][0]
-        if records[i][1] > records[i][0]:
-            winner1 = bracket[i][1]
-        
-        winner2 = bracket[i+1][0]
-        if records[i+1][1] > records[i+1][0]:
-            winner2 = bracket[i+1][1]
-        b.append([winner1, winner2])
-        r.append([0, 0])
-    return b, r
-        
-        
+GAME_REWARDS = [
+    1.0, #win
+    -0.1,#draw
+    -1.0 #loss
+]       
 
 
 board_col = [color_rgb(25, 75, 25), color_rgb(200, 200, 200)] #[dark, light]
 w_piece_col = [color_rgb(255, 255, 255), color_rgb(0, 0, 0)]
 b_piece_col = [color_rgb(0, 0, 0), color_rgb(255, 255, 255)]
 
-square_size = [75, 75]
-board_offest = [100, 100]
+square_size = [win.width*square_ratio_x, win.height*square_ratio_y]
+board_offest = [win.width*off_ratio_x, win.height*off_ratio_y]
 
 in_square = lambda point : [int((point.getX()-board_offest[0])/square_size[0]), int((point.getY()-board_offest[1])/square_size[1])]
 
@@ -306,83 +271,40 @@ turn = 0
 bracket_layers = 3
 selected = []
 board = new_board()
-bracket, records = setup_bracket_rand(net1, bracket_layers)
 
-players = [net1, net1]
+players = [True, net1]
 
-training = True
+training = False
 #WARNING FOR ANYONE TRYING THIS OUT: ai will go through a "really short game" phase (games under 20 moves) starting at generation 1200-1300 and ending in about 100-200 generations
 #starting generation and length of phase depend on dimensions of neural net
 #i have added some measures to combat this but they do not eliminate it completely
-bracket_num = 0
-game_counter = 0.0
-bracket_layer_count = 0
-while win.checkKey() != "Escape":
 
+
+game_counter = 0.0
+while win.checkKey() != "Escape":
     fen = brd.fen()
     board, info = fen_to_brd(fen, board)
-    #board_dim = draw_board(win, square_size, board, board_col, board_offest, white, black, w_piece_col, b_piece_col)
-    
+    board_dim = draw_board(win, square_size, board, board_col, board_offest, white, black, w_piece_col, b_piece_col)
+    time.sleep(1/30)
     if brd.is_game_over():
-        if training:
-            if game_counter == len(bracket):
-                print(game_counter)
-                game_counter = 0
-                
-                if bracket_layer_count == bracket_layers:
-                    winner = bracket[int(game_counter)-1][0]
-                    if records[int(game_counter)-1][1] > records[int(game_counter)-1][0]:
-                        winner = bracket[int(game_counter)-1][1]
-                    bracket, records = setup_bracket_rand(winner, bracket_layers)
-                    winner.output_to_file("current_ai.json")
-                    
-                    if bracket_num%100 == 0:
-                        game = chess.pgn.Game.from_board(brd)
-                        # Undo all moves.
-                        switchyard = []
-                        while brd.move_stack:
-                            switchyard.append(brd.pop())
+        game_counter += 1
+        game = chess.pgn.Game.from_board(brd)
+        # Undo all moves.
+        switchyard = []
+        while brd.move_stack:
+            switchyard.append(brd.pop())
 
-                        game.setup(brd)
-                        node = game
+        game.setup(brd)
+        node = game
 
-                        # Replay all moves.
-                        while switchyard:
-                            move = switchyard.pop()
-                            node = node.add_variation(move)
-                            brd.push(move)
-                        game.headers["Result"] = brd.result()
-                        with open("games/game" + str(bracket_num) + "-" + str(bracket_layer_count) + "-" + str(game_counter) + "-64-8-RL" + ".pgn", "x") as f:
-                            f.write(game.__str__())
-                    
-                    bracket_layer_count = 0
-                    bracket_num += 1
-                    print(bracket_num)
-                else:
-                    bracket_layer_count += 1
-                    bracket, records = bracket_next_layer(bracket, records)
-            else:
-                result = brd.result()
-                if brd.is_checkmate():
-                    if float(game_counter).is_integer():
-                        records[int(game_counter)][0] += int(result[0])
-                        records[int(game_counter)][1] += int(result[len(result)-1])
-                    else:
-                        records[int(game_counter)][1] += int(result[0])
-                        records[int(game_counter)][0] += int(result[len(result)-1])
-
-                
-                print(records)
-                if float(game_counter).is_integer():
-                    players[0] = bracket[int(game_counter)][0]
-                    players[1] = bracket[int(game_counter)][1]
-                else:
-                    players[0] = bracket[int(game_counter)][1]
-                    players[1] = bracket[int(game_counter)][0]
-                game_counter += 0.5
-            
-
-        brd.reset()
+        # Replay all moves.
+        while switchyard:
+            move = switchyard.pop()
+            node = node.add_variation(move)
+            brd.push(move)
+        game.headers["Result"] = brd.result()
+        with open("games/game" + str(game_counter) + "-64-8-RL" + ".pgn", "x") as f:
+            f.write(game.__str__())
         turn  = 0
     else:
         
@@ -423,7 +345,7 @@ while win.checkKey() != "Escape":
                 j.append(n)
             tries = 0
             
-            g = net.output(separate_fen(fen))
+            g, a = net.output(separate_fen(fen))
 
             m = g[len(g)-1][0]
             move = j[int(m*len(j))]

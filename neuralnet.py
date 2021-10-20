@@ -1,16 +1,7 @@
 import json
 import math
 from random import random, randint
-#[
-# ai takes fen input and outputs is ascii of move
-#]
 
-#ASCII RANGE (49 , 91)
-#chr(ascii_num) = char
-#hidden = [[
-#   [[w1, w2, w3], bias1],
-#   [[w1, w2, w3], bias2]
-# ]] 
 #hidden[layer][neuron][0] = weights
 #hidden[layer][neuron][1] = bias
 lrn_rt = 0.25
@@ -69,18 +60,21 @@ def matrix_normalize(mat):
 
 class Network:
 
-    def __init__(self, input_size, hidden, activator):
+    def __init__(self, input_size, hidden, activator, epsilon, max_epsilon, min_epsilon):
         self.inputs = [0]*input_size
         self.hidden = hidden
         self.outputs = []
         self.activator = activator
+        self.e = epsilon
+        self.max_e = max_epsilon
+        self.min_e = min_epsilon
     
     def random_net(self, out_size):
         t = []
         prev_len = len(self.inputs)
         for i in range(4):
             l = []
-            ln = 4
+            ln = 8
             for o in range(ln):
                 w = []
                 for j in range(prev_len):
@@ -152,30 +146,33 @@ class Network:
             d = json.load(o)
             self.hidden = d['hidden']
             self.inputs = d['inputs']
+            self.e = d['epsilon'][0]
+            self.max_e = d['epsilon'][1]
+            self.min_e = d['epsilon'][2]
+
         return self
     
     def output_to_file(self, path):
         with open(path, 'w') as f:
-            json.dump({'inputs':self.inputs, 'hidden':self.hidden}, f)
+            json.dump({'inputs':self.inputs, 'hidden':self.hidden, 'epsilon':[self.e, self.max_e, self.min_e]}, f)
         return
             
 
-g = Network(2, [], Activator(lambda x: safe_sigmoid(x), lambda x: safe_sigmoid(x)*(1-safe_sigmoid(x))))
-g.hidden = g.random_net(1)
-num_correct = 0
-num_wrong = 0
-for i in range(0, 1800):
-    for o in range(0, 144):
-        _1 = randint(0, 10)
-        _2 = randint(0, 10)
-        out, acs = g.output([_1, _2])
-        y_c = [(_1+_2)/20]
-        y = out[len(out)-1][0]
-        print("calculated: " + str(int(y*20+0.5)))
-        print("expected:" + str(_1 + _2))
-        if int(y*20+0.5) != _1 + _2:
-            num_wrong += 1
-            g.backprop(y_c, out, acs)
-        else:
-            num_correct += 1
-        print("\n" + str(num_correct) + "-" + str(num_wrong) + "\n")
+#g = Network(2, [], Activator(lambda x: safe_sigmoid(x), lambda x: safe_sigmoid(x)*(1-safe_sigmoid(x))))
+#g.hidden = g.random_net(1)
+#num_correct = 0
+#num_wrong = 0
+#for o in range(0, 100000):
+#    _1 = randint(0, 5)
+#    _2 = randint(0, 5)
+#    out, acs = g.output([_1, _2])
+#    y_c = [(_1+_2)/10]
+#    y = out[len(out)-1][0]
+#    print("predicted: " + str(int(y*10+0.5)))
+#    print("correct:" + str(_1 + _2))
+#    if int(y*10+0.5) != _1 + _2:
+#        num_wrong += 1
+#        g.backprop(y_c, out, acs)
+#    else:
+#        num_correct += 1
+#    print("\n" + str(num_correct) + "-" + str(num_wrong) + "\n")
