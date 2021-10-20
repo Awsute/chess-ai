@@ -13,7 +13,7 @@ from random import random, randint
 # ]] 
 #hidden[layer][neuron][0] = weights
 #hidden[layer][neuron][1] = bias
-lrn_rt = 2.0
+lrn_rt = 0.25
 class Activator:
     def __init__(self, fn, dfn):
         self.fn = fn
@@ -78,9 +78,9 @@ class Network:
     def random_net(self, out_size):
         t = []
         prev_len = len(self.inputs)
-        for i in range(1):
+        for i in range(4):
             l = []
-            ln = 1
+            ln = 4
             for o in range(ln):
                 w = []
                 for j in range(prev_len):
@@ -123,36 +123,27 @@ class Network:
             self.outputs.append(zs)
         for i in range(len(self.outputs[len(self.outputs)-1])):
             self.outputs[len(self.outputs)-1][i] = self.activator.fn(self.outputs[len(self.outputs)-1][i])
-        return self.outputs
+        return self.outputs, acs
     
-    def backprop(self, inputs, y, y_c):
-        
-        g = self.outputs
+    def backprop(self, y_c, g, acs):
+        y = g[len(g)-1]
         #print("cost = " + str(cost))
-        cost = 0
         dC = 0
-        for o in range(len(y_c)):
 
-            for i in range(len(y_c[o])):
-                dC += 2/len(y_c)*(y_c[o][i]-y[o][i])
-                cost += 1/len(y_c)*(y_c[o][i]-y[o][i])**2
-        for i in range(len(inputs)):
-            g.pop(0)
-            g.insert(0, inputs[i])
-            for l in range(len(g)-1, 0, -1):
-                for n in range(len(g[l])):
-    
-                            z = g[l][n]
-                            s = self.activator.dfn(z)
-                            dCdz = dC*s
-                            for p in range(len(self.hidden[l-1][n][0])):
-                                dCdw = dCdz*g[l-1][p]
-                                self.hidden[l-1][n][0][p] -= lrn_rt*dCdw
-                                #self.hidden[l-1][n][0][p] = safe_sigmoid(self.hidden[l-1][n][0][p])
+        for i in range(len(y_c)):
+            dC += 2*(y_c[i]-y[i])
+        for l in range(len(g)-1, 0, -1):
+            for n in range(len(g[l])):
 
-                            dCdb = dCdz
-                            self.hidden[l-1][n][1] -= lrn_rt*dCdb  
-                            #self.hidden[l-1][n][1] = safe_sigmoid(self.hidden[l-1][n][1])
+                        s = self.activator.dfn(g[l][n])
+                        dCdz = dC*s
+                        for p in range(len(self.hidden[l-1][n][0])):
+                            dCdw = dCdz*acs[l-1][p]
+                            self.hidden[l-1][n][0][p] += lrn_rt*dCdw
+                            #self.hidden[l-1][n][0][p] = safe_sigmoid(self.hidden[l-1][n][0][p])
+
+                        self.hidden[l-1][n][1] += lrn_rt*dCdz
+                        #self.hidden[l-1][n][1] = safe_sigmoid(self.hidden[l-1][n][1])
         return self.hidden
     
     def import_from_file(self, path):
@@ -171,20 +162,20 @@ class Network:
 
 g = Network(2, [], Activator(lambda x: safe_sigmoid(x), lambda x: safe_sigmoid(x)*(1-safe_sigmoid(x))))
 g.hidden = g.random_net(1)
-
-for i in range(0, 100):
-    y_c = []
-    y = []
-    ins = []
+num_correct = 0
+num_wrong = 0
+for i in range(0, 1800):
     for o in range(0, 144):
-        _1 = randint(0, 5)
-        _2 = randint(0, 5)
-        ins.append([_1, _2])
-        out = g.output([_1, _2])
-        y.append(out[len(out)-1])
-        y_c.append([(_1+_2)/10])
-        print("calculated: " + str(int(out[len(out)-1][0]*10+0.5)))
+        _1 = randint(0, 10)
+        _2 = randint(0, 10)
+        out, acs = g.output([_1, _2])
+        y_c = [(_1+_2)/20]
+        y = out[len(out)-1][0]
+        print("calculated: " + str(int(y*20+0.5)))
         print("expected:" + str(_1 + _2))
-    g.backprop(ins, y, y_c)
-
-
+        if int(y*20+0.5) != _1 + _2:
+            num_wrong += 1
+            g.backprop(y_c, out, acs)
+        else:
+            num_correct += 1
+        print("\n" + str(num_correct) + "-" + str(num_wrong) + "\n")
