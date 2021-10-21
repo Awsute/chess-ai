@@ -1,6 +1,5 @@
 from math import pi
-import re
-
+from random import sample
 
 from graphics import *
 from os import system, terminal_size
@@ -239,12 +238,18 @@ square_ratio_y = 75/800
 off_ratio_x = 100/1600
 off_ratio_y = 100/800
 
-epsilon = 1.0
+epsilon = 1.0 #probability of exerimentation
 max_epsilon = 1.0 #max probability of experimentation
 min_epsilon = 0.01 #min probability of experimentation
-net1 = Network(69, [], Activator(lambda x: safe_sigmoid(x), lambda x: (1-safe_sigmoid(x))*safe_sigmoid(x)), epsilon, max_epsilon, min_epsilon)
+
+GAMES_PER_UPDATE_MAIN = 5
+GAMES_PER_UPDATE_TARGET = 10
+MAX_MEM_LENGTH = 200
+main_net = Network(69, [], Activator(lambda x: safe_sigmoid(x), lambda x: (1-safe_sigmoid(x))*safe_sigmoid(x)), epsilon, max_epsilon, min_epsilon)
 #input is fen separated into 69 parts
-net1.hidden = net1.random_net(1)
+main_net.hidden = main_net.random_net(8, 64, 1)
+
+target_net = Network(69, main_net.hidden.copy(), main_net.activator, main_net.e, main_net.max_e, main_net.min_e)
 #net1 = net1.import_from_file("current_ai.json")
 #out1 is index of possible move
 
@@ -253,8 +258,21 @@ GAME_REWARDS = [
     1.0, #win
     -0.1,#draw
     -1.0 #loss
-]       
+]
 
+xy_white = [] #list of games for white (list of input action pairs, result)
+xy_white_game = [] #list of [input state, new input state, action]
+
+xy_black = [] #list of games for black (list of input action pairs, result)
+xy_black_game = [] #list of [input state, new input state, action]
+def train(main, target, mem):
+    MIN_MEMORY_LENGTH = 20
+    if len(mem) < MIN_MEMORY_LENGTH:
+        return
+    batch_size = 20
+    batch = sample(mem, batch_size)
+
+    
 
 board_col = [color_rgb(25, 75, 25), color_rgb(200, 200, 200)] #[dark, light]
 w_piece_col = [color_rgb(255, 255, 255), color_rgb(0, 0, 0)]
@@ -272,7 +290,7 @@ bracket_layers = 3
 selected = []
 board = new_board()
 
-players = [True, net1]
+players = [main_net, main_net]
 
 training = False
 #WARNING FOR ANYONE TRYING THIS OUT: ai will go through a "really short game" phase (games under 20 moves) starting at generation 1200-1300 and ending in about 100-200 generations
@@ -287,6 +305,31 @@ while win.checkKey() != "Escape":
     board_dim = draw_board(win, square_size, board, board_col, board_offest, white, black, w_piece_col, b_piece_col)
     time.sleep(1/30)
     if brd.is_game_over():
+        result_w = 0
+        if brd.is_checkmate():
+            if int(brd.result()[0]) == 1:
+                xy_white_game = (xy_white_game, GAME_REWARDS[0])
+                xy_black_game = (xy_black_game, GAME_REWARDS[2])
+            else:
+                xy_white_game = (xy_white_game, GAME_REWARDS[2])
+                xy_black_game = (xy_black_game, GAME_REWARDS[0])
+        else:
+            xy_white_game = (xy_white_game, GAME_REWARDS[1])
+            xy_black_game = (xy_black_game, GAME_REWARDS[1])
+
+
+        xy_white.append(xy_white_game)
+        xy_white_game = []
+        if len(xy_white) > MAX_MEM_LENGTH:
+            for i in range(len(xy_white)-MAX_MEM_LENGTH):
+                xy_white.pop(0)
+
+        xy_black.append(xy_black_game)
+        xy_black_game = []
+
+        if len(xy_black) > MAX_MEM_LENGTH:
+            for i in range(len(xy_black)-MAX_MEM_LENGTH):
+                xy_black.pop(0)
         game_counter += 1
         game = chess.pgn.Game.from_board(brd)
         # Undo all moves.
@@ -305,6 +348,11 @@ while win.checkKey() != "Escape":
         game.headers["Result"] = brd.result()
         with open("games/game" + str(game_counter) + "-64-8-RL" + ".pgn", "x") as f:
             f.write(game.__str__())
+
+
+
+        with open("experience_replay.json", "w") as f:
+            json.dump({'white': xy_white, 'black': xy_black})
         turn  = 0
     else:
         
@@ -344,13 +392,27 @@ while win.checkKey() != "Escape":
                 n = m.uci()
                 j.append(n)
             tries = 0
-            
-            g, a = net.output(separate_fen(fen))
+            x = separate_fen(fen)
+            y = random()
+            r = random()
+            if not training:
+                r = epsilon+1
+            if r > epsilon:
+                g, a = net.predict(x)
+                y = g[len(g)-1]
 
-            m = g[len(g)-1][0]
-            move = j[int(m*len(j))]
+            
+            move = j[int(y[0]*len(j))]
             mv = chess.Move.from_uci(move)
             brd.push(mv)
+
+            if training:
+                m_move = [x, separate_fen(brd.fen()), y]
+                
+                if turn == 0:
+                    xy_white_game.append(m_move)
+                elif turn == 1:
+                    xy_black_game.append(m_move)
             turn += 1
             turn = turn%2
 

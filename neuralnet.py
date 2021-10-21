@@ -68,20 +68,20 @@ class Network:
         self.e = epsilon
         self.max_e = max_epsilon
         self.min_e = min_epsilon
+        self.use_bias = True
     
-    def random_net(self, out_size):
+    def random_net(self, layer_count, layer_size, out_size):
         t = []
         prev_len = len(self.inputs)
-        for i in range(4):
+        for i in range(layer_count):
             l = []
-            ln = 8
-            for o in range(ln):
+            for o in range(layer_size):
                 w = []
                 for j in range(prev_len):
                     w.append((random()+random()-1))
                 l.append([w, (random()+random()-1)])
             t.append(l)
-            prev_len = ln
+            prev_len = layer_size
         l = []
         for i in range(out_size):
             w = []
@@ -96,7 +96,7 @@ class Network:
         for layer in self.hidden:
             print(layer)
     
-    def output(self, inputs):
+    def predict(self, inputs):
         if len(inputs) != len(self.inputs):
             return
         self.outputs = []
@@ -119,7 +119,8 @@ class Network:
             self.outputs[len(self.outputs)-1][i] = self.activator.fn(self.outputs[len(self.outputs)-1][i])
         return self.outputs, acs
     
-    def backprop(self, y_c, g, acs):
+    def backprop(self, y_c, inputs):
+        g, acs = self.predict(inputs)
         y = g[len(g)-1]
         #print("cost = " + str(cost))
         dC = 0
