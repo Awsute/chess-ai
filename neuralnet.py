@@ -4,7 +4,6 @@ from random import random, randint
 
 #hidden[layer][neuron][0] = weights
 #hidden[layer][neuron][1] = bias
-lrn_rt = 0.25
 class Activator:
     def __init__(self, fn, dfn):
         self.fn = fn
@@ -60,14 +59,14 @@ def matrix_normalize(mat):
 
 class Network:
 
-    def __init__(self, input_size, hidden, activator, epsilon, max_epsilon, min_epsilon):
+    def __init__(self, input_size, hidden, activator):
         self.inputs = [0]*input_size
         self.hidden = hidden
         self.outputs = []
         self.activator = activator
-        self.e = epsilon
-        self.max_e = max_epsilon
-        self.min_e = min_epsilon
+        self.e = 1.0
+        self.max_e = 1.0
+        self.min_e = 0.1
         self.use_bias = True
     
     def random_net(self, layer_count, layer_size, out_size):
@@ -119,7 +118,7 @@ class Network:
             self.outputs[len(self.outputs)-1][i] = self.activator.fn(self.outputs[len(self.outputs)-1][i])
         return self.outputs, acs
     
-    def backprop(self, y_c, inputs):
+    def backprop(self, y_c, inputs, lrn_rt):
         g, acs = self.predict(inputs)
         y = g[len(g)-1]
         #print("cost = " + str(cost))
@@ -158,7 +157,6 @@ class Network:
             json.dump({'inputs':self.inputs, 'hidden':self.hidden, 'epsilon':[self.e, self.max_e, self.min_e]}, f)
         return
             
-
 #g = Network(2, [], Activator(lambda x: safe_sigmoid(x), lambda x: safe_sigmoid(x)*(1-safe_sigmoid(x))))
 #g.hidden = g.random_net(1)
 #num_correct = 0
