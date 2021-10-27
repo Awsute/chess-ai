@@ -64,9 +64,9 @@ class Network:
         self.hidden = hidden
         self.outputs = []
         self.activator = activator
-        self.e = 1.0
+        self.e = 0.7
         self.max_e = 1.0
-        self.min_e = 0.1
+        self.min_e = 0.01
         self.use_bias = True
     
     def random_net(self, layer_count, layer_size, out_size):
@@ -128,16 +128,15 @@ class Network:
             dC += 2*(y_c[i]-y[i])
         for l in range(len(g)-1, 0, -1):
             for n in range(len(g[l])):
+                s = self.activator.dfn(g[l][n])
+                dCdz = dC*s
+                for p in range(len(self.hidden[l-1][n][0])):
+                    dCdw = dCdz*acs[l-1][p]
+                    self.hidden[l-1][n][0][p] += lrn_rt*dCdw
+                    #self.hidden[l-1][n][0][p] = safe_sigmoid(self.hidden[l-1][n][0][p])
 
-                        s = self.activator.dfn(g[l][n])
-                        dCdz = dC*s
-                        for p in range(len(self.hidden[l-1][n][0])):
-                            dCdw = dCdz*acs[l-1][p]
-                            self.hidden[l-1][n][0][p] += lrn_rt*dCdw
-                            #self.hidden[l-1][n][0][p] = safe_sigmoid(self.hidden[l-1][n][0][p])
-
-                        self.hidden[l-1][n][1] += lrn_rt*dCdz
-                        #self.hidden[l-1][n][1] = safe_sigmoid(self.hidden[l-1][n][1])
+                self.hidden[l-1][n][1] += lrn_rt*dCdz
+                #self.hidden[l-1][n][1] = safe_sigmoid(self.hidden[l-1][n][1])
         return self.hidden
     
     def import_from_file(self, path):

@@ -1,5 +1,6 @@
 from math import *
-import random as r
+import sys
+from random import random, randint
 from graphics import *
 import time
 import chess
@@ -226,7 +227,7 @@ def pos_to_num(pos_x, pos_y):
 
 
 brd = chess.Board()
-win = GraphWin("test", 1200, 600, False)
+win = GraphWin("test", 600, 300, False)
 win.setCoords(0, 0, win.width, win.height)
 win.plot(20, 20)
 win.setBackground(color_rgb(50, 15, 50))
@@ -241,12 +242,12 @@ DELTA_E = 0.02 #change in epsilon
 
 #input is fen separated into 69 parts
 main_net_w = Network(69, [], Activator(lambda x: safe_sigmoid(x), lambda x: (1-safe_sigmoid(x))*safe_sigmoid(x)))
-main_net_w.hidden = main_net_w.random_net(8, 8, 1)
-w_wins = 0.0
+main_net_w.hidden = main_net_w.random_net(8, 64, 1)
+main_net_w = main_net_w.import_from_file("current_ai_white.json")
 
 main_net_b = Network(69, [], Activator(lambda x: safe_sigmoid(x), lambda x: (1-safe_sigmoid(x))*safe_sigmoid(x)))
-main_net_b.hidden = main_net_b.random_net(8, 8, 1)
-b_wins = 0.0
+main_net_b.hidden = main_net_b.random_net(8, 64, 1)
+main_net_b = main_net_b.import_from_file("current_ai_black.json")
 #out1 is index of possible move
 
 
@@ -316,7 +317,7 @@ square_size = [win.width*square_ratio_x, win.height*square_ratio_y]
 board_offest = [win.width*off_ratio_x, win.height*off_ratio_y]
 
 in_square = lambda point : [int((point.getX()-board_offest[0])/square_size[0]), int((point.getY()-board_offest[1])/square_size[1])]
-
+GAME_MAX_MOVES = 300
 turn = 0
 #light is turn 0
 #dark is turn 1
@@ -332,7 +333,7 @@ training = True
 #i have added some measures to combat this but they do not eliminate it completely
 #NEW LEARNING METHODS MAY HAVE ELIMINATED THE ABOVE SITUATION
 
-game_counter = 0.0
+game_counter = 55
 current_game = []
 while win.checkKey() != "Escape":
     fen = brd.fen()
@@ -342,8 +343,8 @@ while win.checkKey() != "Escape":
     if brd.is_game_over():
 
         if training:
-
-            if game_counter > MIN_EXPLORATION_GAMES:
+            
+            if (game_counter%50 == 0 or brd.is_checkmate()):
                 lrn_rt_w = GAME_REWARDS[1]
                 lrn_rt_b = GAME_REWARDS[1]
                 if brd.is_checkmate():
@@ -361,12 +362,14 @@ while win.checkKey() != "Escape":
                         
                         lrn_rt_b = GAME_REWARDS[0]
                         main_net_b.e -= DELTA_E
-
-                for i in range(len(xy_white_game)):
-                    main_net_w.backprop(xy_white_game[i][1], xy_white_game[i][0], lrn_rt_w)
+                elif len(brd.move_stack) >= 250:
+                    lrn_rt_b = -0.75
+                    lrn_rt_w = -0.75
+                for i in range(int(len(xy_white_game)/2)):
+                    main_net_w.backprop(xy_white_game[i*2][1], xy_white_game[i*2][0], lrn_rt_w)
                 
-                for i in range(len(xy_black_game)):
-                    main_net_b.backprop(xy_black_game[i][1], xy_black_game[i][0], lrn_rt_b)
+                for i in range(int(len(xy_black_game)/2)):
+                    main_net_b.backprop(xy_black_game[i*2][1], xy_black_game[i*2][0], lrn_rt_b)
 
                 if main_net_w.e > main_net_w.max_e:
                     main_net_w.e = main_net_w.max_e
@@ -401,13 +404,14 @@ while win.checkKey() != "Escape":
                 node = node.add_variation(move)
                 brd.push(move)
             game.headers["Result"] = brd.result()
-            with open("games/game" + str(game_counter) + "-64-64-RL" + ".pgn", "x") as f:
+            with open("games/game" + str(game_counter) + "-8-64-PRL" + ".pgn", "x") as f:
                 f.write(game.__str__())
-            
             main_net_w.output_to_file("current_ai_white.json")
             main_net_b.output_to_file("current_ai_black.json")
 
+        brd.reset()
         game_counter += 1
+        print(game_counter, flush=True)
         turn  = 0
     else:
         
@@ -451,14 +455,15 @@ while win.checkKey() != "Escape":
 
 
             if training:
-                ra = r.random()
-                y = [r.random()]
-                #if ra >= net.e:
-                #    y, acs = net.predict(x)
-                #    y = y[len(y)-1]
+                ra = random()
+                y = [random()]
+                if ra >= net.e:
+                    y, acs = net.predict(x)
+                    y = y[len(y)-1]
                 move = j[int(y[0]*len(j))]
                 mv = chess.Move.from_uci(move)
                 brd.push(mv)
+                
 
                 m_move = [x, y]
                 
@@ -476,4 +481,4 @@ while win.checkKey() != "Escape":
             turn += 1
             turn = turn%2
 
-    time.sleep(1/30)
+    time.sleep(0)
