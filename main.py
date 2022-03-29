@@ -6,6 +6,8 @@ import time
 import chess
 import chess.pgn
 from neuralnet import *
+from predictstates import *
+
 #a1 is dark
 
 #[
@@ -29,6 +31,7 @@ from neuralnet import *
 #]
 #light squares are 1
 #dark squares are 0
+
 
 
 
@@ -227,7 +230,7 @@ def pos_to_num(pos_x, pos_y):
 
 
 brd = chess.Board()
-win = GraphWin("test", 600, 300, False)
+win = GraphWin("test", 1200, 600, False)
 win.setCoords(0, 0, win.width, win.height)
 win.plot(20, 20)
 win.setBackground(color_rgb(50, 15, 50))
@@ -240,21 +243,35 @@ off_ratio_y = 100/800
 MIN_EXPLORATION_GAMES = 0
 DELTA_E = 0.02 #change in epsilon
 
+parent_node = Node(brd.fen, 0.0)
+
 #input is fen separated into 69 parts
 main_net_w = Network(69, [], Activator(lambda x: safe_sigmoid(x), lambda x: (1-safe_sigmoid(x))*safe_sigmoid(x)))
-main_net_w.hidden = main_net_w.random_net(8, 64, 1)
-main_net_w = main_net_w.import_from_file("current_ai_white.json")
+main_net_w.hidden = main_net_w.random_net(16, 64, 129)
+#main_net_w = main_net_w.import_from_file("current_ai_white.json")
 
 main_net_b = Network(69, [], Activator(lambda x: safe_sigmoid(x), lambda x: (1-safe_sigmoid(x))*safe_sigmoid(x)))
-main_net_b.hidden = main_net_b.random_net(8, 64, 1)
-main_net_b = main_net_b.import_from_file("current_ai_black.json")
-#out1 is index of possible move
+main_net_b.hidden = main_net_b.random_net(16, 64, 129)
+#main_net_b = main_net_b.import_from_file("current_ai_black.json")
 
+#out1 is policy and out2 is value prediction
+
+#game state -> hidden layers -> policy, value
+
+
+#this is like alphazero
+#predict future states and network calculates board state values and policy so rewards can be calculated
 
 GAME_REWARDS = [
     1.0, #win
     0.0,#draw
-    -1.0 #loss
+    -1.0, #loss
+]
+
+MOVE_REWARDS = [
+    0.1, #check
+    0.5, #take piece
+    
 ]
 
 replay_mem = []
@@ -263,50 +280,6 @@ xy_white_game = [] #list of [input state, action]
 
 xy_black_game = [] #list of [input state, action]
 
-def list_percent_similar(list1, list2):
-    ma_len = max(len(list1), len(list2))
-    mi_len = min(len(list1), len(list2))
-    percent = mi_len/ma_len
-    if percent > 1.0:
-        percent = 1.0/percent
-    str_s = 0.0
-    for i in range(mi_len):
-        if list1[i] == list2[i]:
-            str_s += 1.0
-    str_s /= mi_len
-    return str_s*percent
-
-
-    
-
-def model_predict_states(board : chess.Board, model : Network, layers):
-    board_states = [board.fen()]
-    new_brd = chess.Board(board.fen())
-    for i in range(layers*2):
-        lgl_moves = brd.generate_legal_moves()
-        j = []
-        for m in lgl_moves:
-            n = m.uci()
-            j.append(n)
-        x = separate_fen(new_brd.fen())
-        y = model.predict(x)
-        move = j[int(y[0]*len(j))]
-        mv = chess.Move.from_uci(move)
-        new_brd.push(mv)
-        board_states.append(new_brd.fen())
-    return board_states
-
-
-def generate_moves(board : chess.Board, layers):
-
-    board_states = [board.fen()]
-    if layers > 0:
-        for move in board.generate_legal_moves():
-            newbrd = chess.Board(board.fen())
-            newbrd.push(move)
-            if not newbrd.is_game_over():
-                board_states.append(generate_moves(newbrd, layers-1))
-    return board_states
 
 
 board_col = [color_rgb(25, 75, 25), color_rgb(200, 200, 200)] #[dark, light]
@@ -328,12 +301,9 @@ board = new_board()
 players = [main_net_w, main_net_b]
 
 training = True
-#WARNING FOR ANYONE TRYING THIS OUT: ai will go through a "really short game" phase (games under 20 moves) starting at generation 1200-1300 and ending in about 100-200 generations
-#starting generation and length of phase depend on dimensions of neural net
-#i have added some measures to combat this but they do not eliminate it completely
-#NEW LEARNING METHODS MAY HAVE ELIMINATED THE ABOVE SITUATION
 
-game_counter = 55
+
+game_counter = 0
 current_game = []
 while win.checkKey() != "Escape":
     fen = brd.fen()
@@ -351,17 +321,13 @@ while win.checkKey() != "Escape":
                     r = brd.result()
                     if int(r[0]) == 1:
                         lrn_rt_w = GAME_REWARDS[0]
-                        main_net_w.e -= DELTA_E
 
                         lrn_rt_b = GAME_REWARDS[2]
-                        main_net_b.e += DELTA_E
 
                     else:
                         lrn_rt_w = GAME_REWARDS[2]
-                        main_net_w.e += DELTA_E
                         
                         lrn_rt_b = GAME_REWARDS[0]
-                        main_net_b.e -= DELTA_E
                 elif len(brd.move_stack) >= 250:
                     lrn_rt_b = -0.75
                     lrn_rt_w = -0.75
@@ -370,18 +336,6 @@ while win.checkKey() != "Escape":
                 
                 for i in range(int(len(xy_black_game)/2)):
                     main_net_b.backprop(xy_black_game[i*2][1], xy_black_game[i*2][0], lrn_rt_b)
-
-                if main_net_w.e > main_net_w.max_e:
-                    main_net_w.e = main_net_w.max_e
-
-                if main_net_w.e < main_net_w.min_e:
-                    main_net_w.e = main_net_w.min_e
-
-                if main_net_b.e > main_net_b.max_e:
-                    main_net_b.e = main_net_b.max_e
-
-                if main_net_b.e < main_net_b.min_e:
-                    main_net_b.e = main_net_b.min_e
 
         xy_white_game = []
         xy_black_game = []
@@ -404,7 +358,7 @@ while win.checkKey() != "Escape":
                 node = node.add_variation(move)
                 brd.push(move)
             game.headers["Result"] = brd.result()
-            with open("games/game" + str(game_counter) + "-8-64-PRL" + ".pgn", "x") as f:
+            with open("games/game" + str(game_counter) + "-a0-p1" + ".pgn", "x") as f:
                 f.write(game.__str__())
             main_net_w.output_to_file("current_ai_white.json")
             main_net_b.output_to_file("current_ai_black.json")
@@ -460,7 +414,7 @@ while win.checkKey() != "Escape":
                 if ra >= net.e:
                     y, acs = net.predict(x)
                     y = y[len(y)-1]
-                move = j[int(y[0]*len(j))]
+                move = j[int((y[0]-0.0001)*len(j))]
                 mv = chess.Move.from_uci(move)
                 brd.push(mv)
                 
@@ -473,12 +427,12 @@ while win.checkKey() != "Escape":
                     xy_black_game.append(m_move)
             else:
                 y, acs = net.predict(x)
-                move = j[int(y[len(y)-1][0]*len(j))]
+                move = j[int((y[len(y)-1][0]-0.001)*len(j))]
+                mv = chess.Move.from_uci(move)
                 brd.push(mv)
             
 
 
             turn += 1
             turn = turn%2
-
     time.sleep(0)
